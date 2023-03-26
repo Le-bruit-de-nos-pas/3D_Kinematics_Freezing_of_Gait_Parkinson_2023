@@ -1163,64 +1163,389 @@ ConoverTest(FOG_kine$Step_Length_Variability_ws, FOG_kine$condition, method ="BH
 # Save complete file ----------
 fwrite(FOG_kine, "FOG_kine_ws.txt", sep="\t")
 
-
-# ------------
-# Ignore --------------
-
+# Means / Medians / Etc -----------------------------------------
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+FOG_kine <- FOG_kine %>% select(-worst_side)
+FOG_kine$condition <- as.factor(FOG_kine$condition)
+FOG_kine <- FOG_kine %>% mutate(FoG_Percent_StraightLine=ifelse(FoG_Percent_StraightLine<0,0,FoG_Percent_StraightLine))
 fwrite(FOG_kine, "FOG_kine_ws.txt", sep="\t")
 
-for(i in names(FOG_kine)[4:35]){
+data.frame(names(FOG_kine))
+
+pvalues <- data.frame()
+
+for(i in names(FOG_kine)[3:34]){
   print(i)
   cat(" - - - - - - - - - - - - - - - - - - - - - - - - -")
-  print(FOG_kine %>% filter(condition == "MedOFFStimOFF" | condition == "ON130Hz")  %>%
-    group_by(condition) %>% summarise(n=median(get(i), na.rm = T)))
+  FOG_kine_temp <- FOG_kine %>% filter(condition == "MedOFFStimON" | condition == "ON130Hz") 
+  WCT <- wilcox.test(get(i)~condition, data = FOG_kine_temp)
+  pvalues <- pvalues %>% bind_rows(data.frame(WCT$p.value)) 
+  
+}
+
+means <- data.frame()
+means <- round(means, 3)
+
+for(i in names(FOG_kine)[3:34]){
+  print(i)
+  cat(" - - - - - - - - - - - - - - - - - - - - - - - - -")
+  tempmean <- data.frame(FOG_kine %>%  group_by(condition) %>% summarise(n=mean(get(i), na.rm = T)) %>%
+    spread(key=condition, value=n))
+    means <- means %>% bind_rows(tempmean) 
+
 }
 
 
-for(i in names(FOG_kine)[4:35]){
+medians <- data.frame()
+medians <- round(medians, 3)
+
+for(i in names(FOG_kine)[3:34]){
   print(i)
   cat(" - - - - - - - - - - - - - - - - - - - - - - - - -")
-  FOG_kine_temp <- FOG_kine %>% filter(condition == "MedOFFStimOFF" | condition == "MedOFFStimON") 
-  print(wilcox.test(get(i)~condition, data = FOG_kine_temp))
+  tempmedians <- data.frame(FOG_kine %>%  group_by(condition) %>% summarise(n=median(get(i), na.rm = T)) %>%
+    spread(key=condition, value=n))
+    medians <- medians %>% bind_rows(tempmedians) 
+
 }
+
+SDS <- data.frame()
+SDS <- round(SDS, 3)
+
+for(i in names(FOG_kine)[3:34]){
+  print(i)
+  cat(" - - - - - - - - - - - - - - - - - - - - - - - - -")
+  tempsds <- data.frame(FOG_kine %>%  group_by(condition) %>% summarise(n=sd(get(i), na.rm = T)) %>%
+    spread(key=condition, value=n))
+    SDS <- SDS %>% bind_rows(tempsds) 
+
+}
+
+
+IQR <- data.frame()
+IQR <- round(IQR, 3)
+
+for(i in names(FOG_kine)[3:34]){
+  print(i)
+  cat(" - - - - - - - - - - - - - - - - - - - - - - - - -")
+  tempiqr <- data.frame(
+    FOG_kine %>%  group_by(condition) %>%
+                     summarise(n=round(quantile(get(i), na.rm = T, probs = seq(0.25,0.75,0.5)), 3)) %>%
+      mutate(flag=row_number()) %>% ungroup() %>% spread(key=flag, value=n) %>%
+      mutate(IQR=paste0("[",`1`, "-", `2`,"]")) %>% select(condition, IQR) %>%
+      transpose()
+  )
+  IQR <- IQR %>% bind_rows(tempiqr) 
+
+}
+
+row_odd <- seq_len(nrow(IQR)) %% 2    
+IQR[row_odd == 0, ] 
 
 # -----------------------------------
-# Random forest --------------------------------
+# Random forests --------------------------------
+ 
+# MedOFFStimOFF   ->     MedOFFStimON
 
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+unique(FOG_kine$condition)
 
 temp <- FOG_kine %>% filter(condition=="MedOFFStimOFF"|condition=="MedOFFStimON")
-temp <- temp %>% select(-c(patient_name, worst_side)) %>% 
-  mutate(condition=ifelse(condition=="MedOFFStimOFF",0,1)) %>% mutate(condition=as.factor(condition))
+temp <- temp %>% mutate(condition=ifelse(condition=="MedOFFStimOFF",0,1)) %>% mutate(condition=as.factor(condition))
 
-modelAll_1_randomForest <- randomForest(condition ~ . , data = temp)
+modelAll_1_randomForest <- randomForest(condition ~ . , data = temp[,-1])
 
 data.frame(modelAll_1_randomForest$importance) %>% arrange(-MeanDecreaseGini)
 
 data.frame(
   temp %>% select(condition) %>% 
-    bind_cols(predict(modelAll_1_randomForest, temp, type = 'prob')) 
+    bind_cols(predict(modelAll_1_randomForest, temp[,-1], type = 'prob')) 
 ) %>%
   gather( PredCondiction, Score, X0:X1, factor_key=TRUE) %>%
-  ggplot(aes(Score, colour=PredCondiction, fill=PredCondiction)) +
+  rename("Group/State Prediction"="PredCondiction") %>%
+  mutate(condition=ifelse(condition==0,"MedOFF-StimOFF", "MedOFF-StimON 130Hz")) %>%
+  mutate(`Group/State Prediction`=ifelse(`Group/State Prediction`=="X0","Predicted MedOFF-StimOFF", "Predicted MedOFF-StimON 130Hz")) %>%
+  ggplot(aes(Score, colour=`Group/State Prediction`, fill=`Group/State Prediction`)) +
   geom_density(alpha=0.5) +
   facet_wrap(~condition) +
   theme_minimal() +
-  ggsci::scale_color_futurama() +
-  ggsci::scale_fill_futurama() 
+  ggsci::scale_color_nejm() +
+  ggsci::scale_fill_nejm()  +
+  xlab("\n Propensity Score (->  Med OFF-Stim ON 130Hz)")
+
+
+
+# MedOFFStimOFF   ->     ON130Hz
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+
+temp <- FOG_kine %>% filter(condition=="MedOFFStimOFF"|condition=="ON130Hz")
+temp <- temp %>% mutate(condition=ifelse(condition=="MedOFFStimOFF",0,1)) %>% mutate(condition=as.factor(condition))
+
+modelAll_1_randomForest <- randomForest(condition ~ . , data = temp[,-1])
+
+data.frame(modelAll_1_randomForest$importance) %>% arrange(-MeanDecreaseGini)
+
+data.frame(
+  temp %>% select(condition) %>% 
+    bind_cols(predict(modelAll_1_randomForest, temp[,-1], type = 'prob')) 
+) %>%
+  gather( PredCondiction, Score, X0:X1, factor_key=TRUE) %>%
+  rename("Group/State Prediction"="PredCondiction") %>%
+  mutate(condition=ifelse(condition==0,"MedOFF-StimOFF", "MedON-StimON 130Hz")) %>%
+  mutate(`Group/State Prediction`=ifelse(`Group/State Prediction`=="X0","Predicted MedOFF-StimOFF", "Predicted MedON-StimON 130Hz")) %>%
+  ggplot(aes(Score, colour=`Group/State Prediction`, fill=`Group/State Prediction`)) +
+  geom_density(alpha=0.5) +
+  facet_wrap(~condition) +
+  theme_minimal() +
+  ggsci::scale_color_nejm() +
+  ggsci::scale_fill_nejm()  +
+  xlab("\n Propensity Score (->  Med ON-Stim ON 130Hz)")
+
+
+
+# ON130Hz   ->     ON60Hz
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+
+temp <- FOG_kine %>% filter(condition=="ON130Hz"|condition=="ON60Hz")
+temp <- temp %>% mutate(condition=ifelse(condition=="ON130Hz",0,1)) %>% mutate(condition=as.factor(condition))
+
+modelAll_1_randomForest <- randomForest(condition ~ . , data = temp[,-1])
+
+data.frame(modelAll_1_randomForest$importance) %>% arrange(-MeanDecreaseGini)
+
+data.frame(
+  temp %>% select(condition) %>% 
+    bind_cols(predict(modelAll_1_randomForest, temp[,-1], type = 'prob')) 
+) %>%
+  gather( PredCondiction, Score, X0:X1, factor_key=TRUE) %>%
+  rename("Group/State Prediction"="PredCondiction") %>%
+  mutate(condition=ifelse(condition==0,"MedON-StimON 130Hz", "MedON-StimON 60Hz")) %>%
+  mutate(`Group/State Prediction`=ifelse(`Group/State Prediction`=="X0","Predicted MedON-StimON 130Hz", "Predicted MedON-StimON 60Hz")) %>%
+  ggplot(aes(Score, colour=`Group/State Prediction`, fill=`Group/State Prediction`)) +
+  geom_density(alpha=0.5) +
+  facet_wrap(~condition) +
+  theme_minimal() +
+  ggsci::scale_color_nejm() +
+  ggsci::scale_fill_nejm()  +
+  xlab("\n Propensity Score (->  Med ON-Stim ON 60Hz)")
+
+
+
+
+
+
 # ---------------------------------------
+# Explainer range ------------------------------------
+
+explainer_ranger <- explain(modelAll_1_randomForest,
+                            data = temp[,-1],
+                            y =  temp$condition,
+                            label = "model_RandomForest")
+
+
+new_observation <- temp[20]
+bd_ranger <- predict_parts_break_down(explainer_ranger, new_observation = new_observation)
+head(bd_ranger)
+plot(bd_ranger)
+
+# ---------------------------------------
+# PCA ---------------------------
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+
+temp <- FOG_kine %>% filter(condition=="MedOFFStimOFF"|condition=="MedOFFStimON")
+
+prcompFOG_kine <- prcomp(temp[,3:34], center = TRUE, scale = TRUE)
+summary(prcompFOG_kine)
+
+prcompFOG_kine$rotation[,1:7]
+
+my.var = varimax(prcompFOG_kine$rotation)
+
+myvarshort <-my.var$loadings[,1:7]
+myvarshort <- as.data.frame(myvarshort)
+
+screeplot(prcompFOG_kine, type = "l", npcs = 12, main = "Screeplot of the first 12 PCs")
+abline(h = 1, col="red", lty=5)
+legend("topright", legend=c("Eigenvalue = 1"),
+       col=c("red"), lty=5, cex=0.6)
+
+
+cumpro2 <- cumsum(prcompFOG_kine$sdev^2 / sum(prcompFOG_kine$sdev^2))
+plot(cumpro2[0:12], xlab = "PC #", ylab = "Cumulative proportion of explained variance", main = "Cumulative variance plot")
+abline(v = 12, col="blue", lty=5)
+abline(h = 0.85510 , col="blue", lty=5)
+legend("topleft", legend=c("Cut-off @ PC7"),
+       col=c("blue"), lty=5, cex=0.6)
+
+
+prcompFOG_kine
+
+PC <- predict(prcompFOG_kine, temp[,3:34])
+
+tr <- cbind(PC, label=temp[,2])
+tr$label<-as.factor(tr$label)
+
+tr %>%
+  ggplot(aes(PC1, PC2, colour=label)) +
+  geom_point()
+
+
+# ------------------------------
+# Random forest regression for Fog -------------------
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+
+temp <- FOG_kine %>% select(-c(patient_name , condition))
+
+modelAll_1_randomForest <- randomForest(FoG_Percent_StraightLine ~ . , data = temp)
+summary(modelAll_1_randomForest)
+
+data.frame(modelAll_1_randomForest$importance) %>% arrange(-IncNodePurity)
+
+  
+  
+data.frame(
+  temp %>% select(FoG_Percent_StraightLine) %>% 
+    bind_cols(predict(modelAll_1_randomForest, temp)) 
+)   %>%
+  gather( Group, FOGScore, FoG_Percent_StraightLine:`...2`, factor_key=TRUE) %>%
+  mutate(Group=ifelse(Group=="FoG_Percent_StraightLine", "Observed % FOG", "Predicted % FOG")) %>%
+  ggplot(aes(FOGScore, colour=Group, fill=Group)) +
+  geom_density(alpha=0.5) +
+  theme_minimal() +
+  ggsci::scale_color_nejm() +
+  ggsci::scale_fill_nejm()  +
+  xlab("\n % FOG") + ylab("Patient kernel density \n")
+
 
 
 explainer_ranger <- explain(modelAll_1_randomForest,
                             data = temp,
-                            y =  temp$condition,
+                            y =  temp$FoG_Percent_StraightLine,
                             label = "model_RandomForest")
 
-print(explainer_ranger)
-plot(explainer_ranger)
 
-
-
-new_observation <- temp[7,]
+new_observation <- temp[78]
 bd_ranger <- predict_parts_break_down(explainer_ranger, new_observation = new_observation)
 head(bd_ranger)
 plot(bd_ranger)
+
+
+new_observation <- temp[84]
+bd_ranger <- predict_parts_break_down(explainer_ranger, new_observation = new_observation)
+head(bd_ranger)
+plot(bd_ranger)
+
+
+
+
+
+
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+unique(FOG_kine$condition)
+
+tempOFFOFF <- FOG_kine %>% filter(condition=="MedOFFStimOFF") %>% select(-c(patient_name,condition))
+tempOFFON <- FOG_kine %>% filter(condition=="ON130Hz") %>% select(-c(patient_name,condition))
+
+temp <-  tempOFFON- tempOFFOFF
+
+
+modelAll_1_randomForest <- randomForest(FoG_Percent_StraightLine ~ . , data = temp)
+summary(modelAll_1_randomForest)
+
+data.frame(modelAll_1_randomForest$importance) %>% arrange(-IncNodePurity)
+
+  
+  
+data.frame(
+  temp %>% select(FoG_Percent_StraightLine) %>% 
+    bind_cols(predict(modelAll_1_randomForest, temp)) 
+)   %>%
+  gather( Group, FOGScore, FoG_Percent_StraightLine:`...2`, factor_key=TRUE) %>%
+  mutate(Group=ifelse(Group=="FoG_Percent_StraightLine", "Observed Change in % FOG", "Predicted Change in % FOG")) %>%
+  ggplot(aes(FOGScore, colour=Group, fill=Group)) +
+  geom_density(alpha=0.5) +
+  theme_minimal() +
+  ggsci::scale_color_nejm() +
+  ggsci::scale_fill_nejm()  +
+  xlab("\n Change in % FOG") + ylab("Patient kernel density \n")
+
+
+
+explainer_ranger <- explain(modelAll_1_randomForest,
+                            data = temp,
+                            y =  temp$FoG_Percent_StraightLine,
+                            label = "model_RandomForest")
+
+
+new_observation <- temp[1]
+bd_ranger <- predict_parts_break_down(explainer_ranger, new_observation = new_observation)
+head(bd_ranger)
+plot(bd_ranger)
+
+
+new_observation <- temp[14]
+bd_ranger <- predict_parts_break_down(explainer_ranger, new_observation = new_observation)
+head(bd_ranger)
+plot(bd_ranger)
+
+
+# MedOFFStimOFF vs MedOFFStimON
+# MedOFFStimOFF vs MedONStimOFF
+# MedOFFStimOFF vs MedONStimOFF
+# ON60Hz vs ON130Hz
+
+
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+unique(FOG_kine$condition)
+
+tempOFFOFF <- FOG_kine %>% filter(condition=="MedOFFStimOFF") %>% select(-c(patient_name,condition))
+tempOFFON <- FOG_kine %>% filter(condition=="MedONStimOFF") %>% select(-c(patient_name,condition))
+
+temp <-  tempOFFON- tempOFFOFF
+
+
+modelAll_1_randomForest <- randomForest(FoG_Percent_StraightLine ~ . , data = temp)
+summary(modelAll_1_randomForest)
+
+data.frame(modelAll_1_randomForest$importance) %>% arrange(-IncNodePurity)
+
+  
+  
+data.frame(
+  temp %>% select(FoG_Percent_StraightLine) %>% 
+    bind_cols(predict(modelAll_1_randomForest, temp)) 
+)   %>%
+  gather( Group, FOGScore, FoG_Percent_StraightLine:`...2`, factor_key=TRUE) %>%
+  mutate(Group=ifelse(Group=="FoG_Percent_StraightLine", "Observed Change in % FOG", "Predicted Change in % FOG")) %>%
+  ggplot(aes(FOGScore, colour=Group, fill=Group)) +
+  geom_density(alpha=0.5) +
+  theme_minimal() +
+  ggsci::scale_color_nejm() +
+  ggsci::scale_fill_nejm()  +
+  xlab("\n Change in % FOG") + ylab("Patient kernel density \n")
+
+
+
+explainer_ranger <- explain(modelAll_1_randomForest,
+                            data = temp,
+                            y =  temp$FoG_Percent_StraightLine,
+                            label = "model_RandomForest")
+
+
+new_observation <- temp[1]
+bd_ranger <- predict_parts_break_down(explainer_ranger, new_observation = new_observation)
+head(bd_ranger)
+plot(bd_ranger)
+
+
+new_observation <- temp[14]
+bd_ranger <- predict_parts_break_down(explainer_ranger, new_observation = new_observation)
+head(bd_ranger)
+plot(bd_ranger)
+
+# -----------------------
