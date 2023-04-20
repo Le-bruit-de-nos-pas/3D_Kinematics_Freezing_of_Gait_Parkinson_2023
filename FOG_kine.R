@@ -1493,18 +1493,17 @@ head(bd_ranger)
 plot(bd_ranger)
 
 
+
+
+
+
 # MedOFFStimOFF vs MedOFFStimON
-# MedOFFStimOFF vs MedONStimOFF
-# MedOFFStimOFF vs MedONStimOFF
-# ON60Hz vs ON130Hz
-
-
 
 FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
 unique(FOG_kine$condition)
 
 tempOFFOFF <- FOG_kine %>% filter(condition=="MedOFFStimOFF") %>% select(-c(patient_name,condition))
-tempOFFON <- FOG_kine %>% filter(condition=="MedONStimOFF") %>% select(-c(patient_name,condition))
+tempOFFON <- FOG_kine %>% filter(condition=="MedOFFStimON") %>% select(-c(patient_name,condition))
 
 temp <-  tempOFFON- tempOFFOFF
 
@@ -1527,7 +1526,7 @@ data.frame(
   theme_minimal() +
   ggsci::scale_color_nejm() +
   ggsci::scale_fill_nejm()  +
-  xlab("\n Change in % FOG") + ylab("Patient kernel density \n")
+  xlab("\n Change in % FOG OFF / OFF to OFF / ON") + ylab("Patient kernel density \n")
 
 
 
@@ -1547,5 +1546,112 @@ new_observation <- temp[14]
 bd_ranger <- predict_parts_break_down(explainer_ranger, new_observation = new_observation)
 head(bd_ranger)
 plot(bd_ranger)
+
+
+
+
+# MedOFFStimOFF vs MedONStimOFF
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+unique(FOG_kine$condition)
+
+tempOFFOFF <- FOG_kine %>% filter(condition=="MedOFFStimOFF") %>% select(-c(patient_name,condition))
+tempONOFF <- FOG_kine %>% filter(condition=="MedONStimOFF") %>% select(-c(patient_name,condition))
+
+temp <-  tempONOFF- tempOFFOFF
+
+
+modelAll_1_randomForest <- randomForest(FoG_Percent_StraightLine ~ . , data = temp)
+summary(modelAll_1_randomForest)
+
+data.frame(modelAll_1_randomForest$importance) %>% arrange(-IncNodePurity)
+
+  
+  
+data.frame(
+  temp %>% select(FoG_Percent_StraightLine) %>% 
+    bind_cols(predict(modelAll_1_randomForest, temp)) 
+)   %>%
+  gather( Group, FOGScore, FoG_Percent_StraightLine:`...2`, factor_key=TRUE) %>%
+  mutate(Group=ifelse(Group=="FoG_Percent_StraightLine", "Observed Change in % FOG", "Predicted Change in % FOG")) %>%
+  ggplot(aes(FOGScore, colour=Group, fill=Group)) +
+  geom_density(alpha=0.5) +
+  theme_minimal() +
+  ggsci::scale_color_nejm() +
+  ggsci::scale_fill_nejm()  +
+  xlab("\n Change in % FOG OFF / OFF to ON / OFF") + ylab("Patient kernel density \n")
+
+
+
+explainer_ranger <- explain(modelAll_1_randomForest,
+                            data = temp,
+                            y =  temp$FoG_Percent_StraightLine,
+                            label = "model_RandomForest")
+
+
+new_observation <- temp[1]
+bd_ranger <- predict_parts_break_down(explainer_ranger, new_observation = new_observation)
+head(bd_ranger)
+plot(bd_ranger)
+
+
+new_observation <- temp[14]
+bd_ranger <- predict_parts_break_down(explainer_ranger, new_observation = new_observation)
+head(bd_ranger)
+plot(bd_ranger)
+
+
+
+
+# # ON60Hz vs ON130Hz
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+unique(FOG_kine$condition)
+
+tempON130Hz <- FOG_kine %>% filter(condition=="ON130Hz") %>% select(-c(patient_name,condition))
+tempON60Hz <- FOG_kine %>% filter(condition=="ON60Hz") %>% select(-c(patient_name,condition))
+
+temp <-  tempON60Hz- tempON130Hz
+
+
+modelAll_1_randomForest <- randomForest(FoG_Percent_StraightLine ~ . , data = temp)
+summary(modelAll_1_randomForest)
+
+data.frame(modelAll_1_randomForest$importance) %>% arrange(-IncNodePurity)
+
+  
+  
+data.frame(
+  temp %>% select(FoG_Percent_StraightLine) %>% 
+    bind_cols(predict(modelAll_1_randomForest, temp)) 
+)   %>%
+  gather( Group, FOGScore, FoG_Percent_StraightLine:`...2`, factor_key=TRUE) %>%
+  mutate(Group=ifelse(Group=="FoG_Percent_StraightLine", "Observed Change in % FOG", "Predicted Change in % FOG")) %>%
+  ggplot(aes(FOGScore, colour=Group, fill=Group)) +
+  geom_density(alpha=0.5) +
+  theme_minimal() +
+  ggsci::scale_color_nejm() +
+  ggsci::scale_fill_nejm()  +
+  xlab("\n Change in % FOG 130Hz to 60Hz") + ylab("Patient kernel density \n")
+
+
+
+explainer_ranger <- explain(modelAll_1_randomForest,
+                            data = temp,
+                            y =  temp$FoG_Percent_StraightLine,
+                            label = "model_RandomForest")
+
+
+new_observation <- temp[1]
+bd_ranger <- predict_parts_break_down(explainer_ranger, new_observation = new_observation)
+head(bd_ranger)
+plot(bd_ranger)
+
+
+new_observation <- temp[14]
+bd_ranger <- predict_parts_break_down(explainer_ranger, new_observation = new_observation)
+head(bd_ranger)
+plot(bd_ranger)
+
 
 # -----------------------
