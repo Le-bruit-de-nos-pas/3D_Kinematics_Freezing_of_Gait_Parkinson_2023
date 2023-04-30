@@ -9,6 +9,9 @@ library(randomForest)
 library(DALEX)
 library(gbm)
 options(scipen = 999)
+library(ISLR2)
+library(leaps)
+library(glmnet)
 
 # Import data, define worst side -------------------------------------------------------------
 
@@ -1655,3 +1658,364 @@ plot(bd_ranger)
 
 
 # -----------------------
+
+
+# Regression ----------
+
+
+# MedOFFStimOFF vs MedOFFStimON
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+
+temp <- FOG_kine
+
+temp <- temp %>% select(-c(condition, patient_name))
+
+temp <- temp %>% select(FoG_Percent_StraightLine) %>%
+  bind_cols(temp %>% select(-FoG_Percent_StraightLine))
+
+regit_full <- regsubsets(FoG_Percent_StraightLine ~ . , data=temp, nvmax=19)
+
+summary(regit_full)
+
+reg_summary <- summary(regit_full)
+
+names(reg_summary)
+
+reg_summary$rss
+
+# par(mfrow = c(1, 1))
+
+plot(reg_summary$rss , xlab = " Number of Variables ", ylab = " RSS ", type = "l")
+
+plot(reg_summary$adjr2 , xlab = " Number of Variables ", ylab = " Adjusted RSq ", type = "l")
+
+plot(reg_summary$bic , xlab = " Number of Variables ", ylab = "BIC ", type = "l")
+
+plot(reg_summary$cp, xlab = " Number of Variables ", ylab = "Cp", type = "l")
+
+which.min(reg_summary$cp)
+
+points(9, reg_summary$cp[9], col = " red ", cex = 2, pch = 20)
+
+which.min(reg_summary$bic)
+
+plot(reg_summary$bic , xlab = " Number of Variables ", ylab = " BIC ", type = "l")
+
+plot(regit_full , scale = "r2")
+plot(regit_full , scale = "adjr2")
+plot(regit_full , scale = "Cp")
+plot(regit_full , scale = "bic")
+
+coef(regit_full , 7)
+
+
+
+
+set.seed(1)
+train <- sample(c(TRUE , FALSE), nrow (temp), replace = TRUE)
+test <- (!train)
+
+regit_full <- regsubsets(FoG_Percent_StraightLine ~ . , data=temp[train,], nvmax=19)
+test.mat <- model.matrix(FoG_Percent_StraightLine ~ . , data=temp[test,])
+
+val.errors <- rep (NA, 19)
+
+for (i in 1:19){
+  coefi <- coef(regit_full , id = i)
+  pred <- test.mat[, names(coefi)] %*% coefi
+  val.errors[i] <- mean((temp$FoG_Percent_StraightLine[test] - pred)^2)
+}
+
+
+which.min(val.errors)
+
+
+predict.regsubsets <- function (object , newdata , id, ...) {
+  form <- as.formula(object$call[[2]])
+  mat <- model.matrix(form , newdata)
+  coefi <- coef(object , id = id)
+  xvars <- names(coefi)
+  mat[, xvars] %*% coefi
+}
+
+regfit.best <- regsubsets(FoG_Percent_StraightLine ~., data = temp , nvmax = 19)
+
+coef(regfit.best , 9)
+
+
+k <- 10
+n <- nrow(temp)
+set.seed(1)
+folds <- sample(rep(1:k, length = n))
+cv.errors <- matrix(NA, k, 19, dimnames = list(NULL , paste(1:19)))
+
+
+for (j in 1:k) {
+  best.fit <- regsubsets(FoG_Percent_StraightLine ~ ., data = temp[folds != j, ], nvmax = 19)
+  for (i in 1:19) {
+    pred <- predict(best.fit , temp[folds == j, ], id = i)
+    cv.errors[j, i] <- mean((temp$FoG_Percent_StraightLine[folds == j] - pred)^2)
+  }
+}
+
+mean.cv.errors <- apply(cv.errors , 2, mean)
+
+sqrt(mean.cv.errors)
+
+plot(mean.cv.errors , type = "b")
+
+data.frame(mean.cv.errors) %>% mutate(N=row_number()) %>%
+  ggplot(aes(N, mean.cv.errors)) +
+  geom_point(size=3, alpha=1, shape=4) +
+  geom_line(size=2, alpha=0.3, colour="deepskyblue4") +
+  theme_minimal() +
+  xlab("\n Number of Predictors") + ylab("10-fold cross-validation error \n")
+  
+reg.best <- regsubsets(FoG_Percent_StraightLine ~ ., data = temp , nvmax = 19)
+coef(reg.best , 7)
+
+
+#                           (Intercept) 
+#                            53.7481254 
+#                   Step_Time_Asymmetry 
+#                             0.2459206 
+#                Step_Width_Variability 
+#                            -0.4152489 
+#                            Entropy_ML 
+#                           -27.7512177 
+#              Step_Time_Variability_ws 
+#                             0.3085122 
+#             Double_Support_Percent_ws 
+#                             0.8099760 
+# Double_Support_Percent_Variability_ws 
+#                            -0.2943406 
+#            Step_Length_Variability_ws 
+#                             0.3438915 
+                            
+                            
+
+
+summary_best <- summary(reg.best)
+
+summary_best
+
+plot(summary_best$adjr2 , xlab = " Number of Variables ", ylab = " Adjusted RSq ", type = "l")
+
+plot(summary_best$bic , xlab = " Number of Variables ", ylab = "BIC ", type = "l")
+
+data.frame(summary_best$bic) %>%
+   mutate(N=row_number()) %>%
+  ggplot(aes(N, summary_best.bic)) +
+  geom_point(size=3, alpha=1, shape=4) +
+  geom_line(size=2, alpha=0.3, colour="firebrick") +
+  theme_minimal() +
+  xlab("\n Number of Predictors") + ylab("Bayesian information criterion (BIC) \n")
+  
+
+
+
+
+plot(summary_best$cp, xlab = " Number of Variables ", ylab = "Cp", type = "l")
+
+
+regsubsets_best_7 <- fread("regsubsets_best_7.csv")
+regsubsets_best_7[is.na(regsubsets_best_7)] <- 0
+regsubsets_best_7 <- regsubsets_best_7 %>% select(-GDI_Percent_ws)
+
+regsubsets_best_7 %>% gather(Var, Pres, Cadence:Step_Length_Variability_ws) %>%
+  mutate(Pres=ifelse(Pres==1, "Yes", "No")) %>%
+  rename("Predictor_Included"="Pres") %>%
+  mutate(Predictor_Included=as.factor(Predictor_Included)) %>%
+  ggplot(aes(x=N_vars , y=Var, fill = Predictor_Included)) + 
+  geom_tile(color = "white", size = 0.1) + 
+  scale_fill_manual( values= c("snow", "deepskyblue4") ) +
+  #scale_x_discrete(expand=c(0,0)) + 
+  scale_y_discrete(expand=c(0,0)) + 
+  coord_equal() + 
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(min(regsubsets_best_7$N_vars),max(regsubsets_best_7$N_vars),by=1)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  xlab("\n Number of Predictors") +ylab("Predictor Included (yes/no) \n")
+
+
+# ------------------
+
+# RIDGES / LASSO ----------------
+
+x <- model.matrix(FoG_Percent_StraightLine ~ ., temp)[, -1]
+y <- temp$FoG_Percent_StraightLine
+
+grid <- 10^seq(10, -2, length = 100)
+ridge.mod <- glmnet(x, y, alpha = 0, lambda = grid)
+dim(coef(ridge.mod))
+ridge.mod$lambda[50]
+
+set.seed(1)
+train <- sample(1: nrow (x), nrow (x) / 2)
+test <- (-train)
+y.test <- y[test]
+
+
+ridge.mod <- glmnet(x[train , ], y[train], alpha = 0, lambda = grid, thresh = 1e-12)
+ridge.pred <- predict(ridge.mod , s = 4, newx = x[test , ])
+mean((ridge.pred - y.test)^2)
+
+mean((mean(y[train]) - y.test)^2)
+
+
+ridge.pred <- predict(ridge.mod , s = 0, newx = x[test , ], exact = T, x = x[train , ], y = y[train])
+mean((ridge.pred - y.test)^2)
+
+lm( y ~ x, subset = train)
+predict(ridge.mod , s = 0, exact = T, type = "coefficients", x = x[train , ], y = y[train])[1:20, ]
+
+set.seed(1)
+cv.out <- cv.glmnet(x[train , ], y[train], alpha = 0)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+bestlam
+
+
+ridge.pred <- predict(ridge.mod , s = bestlam , newx = x[test , ])
+
+mean((ridge.pred - y.test)^2)
+
+out <- glmnet(x, y, alpha = 0)
+predict(out , type = "coefficients", s = bestlam)[1:20, ]
+
+
+
+
+
+
+
+
+
+lasso.mod <- glmnet(x[train , ], y[train], alpha = 1, lambda = grid)
+plot(lasso.mod)
+
+
+set.seed(1)
+cv.out <- cv.glmnet(x[train , ], y[train], alpha = 1)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+lasso.pred <- predict(lasso.mod , s = bestlam , newx = x[test , ])
+mean((lasso.pred - y.test)^2)
+
+     
+out <- glmnet(x, y, alpha = 1, lambda = grid)
+lasso.coef <- predict(out , type = "coefficients", s = bestlam)[, ]
+
+lasso.coef[lasso.coef>0]
+
+# ------------
+# Correlations-------------------
+# MedOFFStimOFF vs MedOFFStimON
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+
+temp <- FOG_kine
+unique(temp$condition)
+
+tempOFFOFF <- FOG_kine %>% filter(condition=="MedOFFStimOFF") %>% select(-c(patient_name,condition))
+tempOFFON <- FOG_kine %>% filter(condition=="MedOFFStimON") %>% select(-c(patient_name,condition))
+tempONOFF <- FOG_kine %>% filter(condition=="MedONStimOFF") %>% select(-c(patient_name,condition))
+ 
+temp <-  tempOFFON- tempOFFOFF
+
+temp <- temp %>% select(FoG_Percent_StraightLine) %>%
+  bind_cols(temp %>% select(-FoG_Percent_StraightLine))
+
+# temp <- temp %>% select(-c(patient_name,condition))
+
+
+list <- list()
+list2 <- list()
+
+
+for (i in names(temp)[2:32]) {
+  list <- append(list, cor(temp$FoG_Percent_StraightLine, temp[,get(i)]))
+  list2 <- append(list2, cor.test(temp$FoG_Percent_StraightLine, temp[,get(i)])$p.value)
+}
+
+list <- unlist(list)
+list2 <- unlist(list2)
+
+data.frame(names(temp)[2:32]) %>% bind_cols(data.frame(list)) %>% bind_cols(data.frame(list2)) %>%
+  arrange(-abs(list))
+
+
+
+# Change from OFF OFF to OFF ON
+
+                       names.temp..2.32.        list        list2
+1                      Speed_Variability  0.76494874 0.0003471805
+2                         Step_Length_ws -0.74598922 0.0005848553
+3                             Step_Width -0.74052791 0.0006741493
+4              Double_Support_Percent_ws  0.73008279 0.0008765073
+5               Step_Time_Variability_ws  0.71015654 0.0014021980
+6  Double_Support_Percent_Variability_ws  0.70796279 0.0014732556
+7                                  HR_ML -0.68070477 0.0026319163
+8             Step_Length_Variability_ws  0.62310641 0.0075372172
+9              Swing_Time_Variability_ws  0.57713290 0.0152784400
+10    Stance_Time_Percent_Variability_ws  0.55480019 0.0208043355
+11                Step_Width_Variability  0.52489698 0.0305089254
+12                            Entropy_ML -0.50969331 0.0366156974
+13                            COM_RMS_ML -0.50634896 0.0380757680
+14                                 HR_AP -0.46072424 0.0627163300
+15      Double_Support_Percent_Asymmetry -0.44989494 0.0699874574
+16                   Step_Time_Asymmetry  0.44737834 0.0717622710
+17                Stance_Time_Percent_ws -0.43801060 0.0786594423
+18                         Swing_Time_ws  0.43800917 0.0786605291
+19                  Swing_Time_Asymmetry  0.42631992 0.0879288314
+20                 Step_Length_Asymmetry  0.37820493 0.1344306954
+21                Cycle_Time_Variability  0.36578974 0.1487619619
+22                            Entropy_AP  0.33669963 0.1863387383
+23                               Cadence -0.25367265 0.3258794537
+24                            Cycle_Time  0.22000776 0.3961658196
+25                          Step_Time_ws  0.21370792 0.4101649429
+26                            COM_RMS_AP  0.20573690 0.4282484982
+27                          Entropy_Vert  0.18808674 0.4697270988
+28                          COM_RMS_Vert -0.13423438 0.6075035507
+29                        GDI_Percent_ws  0.10256365 0.6952756498
+30                                 Speed  0.02964764 0.9100675772
+31                               HR_Vert -0.01702004 0.9483059035
+
+
+# Change from OFF OFF to ON OFF
+
+                       names.temp..2.32.        list         list2
+1                             Cycle_Time  0.82548947 0.00004494322
+2               Step_Time_Variability_ws  0.82040264 0.00005488198
+3                      Speed_Variability  0.80954156 0.00008242647
+4     Stance_Time_Percent_Variability_ws  0.80917145 0.00008353931
+5                 Stance_Time_Percent_ws -0.80614110 0.00009313615
+6                          Swing_Time_ws  0.80613661 0.00009315103
+7                         Step_Length_ws -0.78812623 0.00017144530
+8                 Cycle_Time_Variability  0.78587804 0.00018426538
+9                             Entropy_ML -0.74217054 0.00064617826
+10                   Step_Time_Asymmetry  0.70936622 0.00142746449
+11                          Step_Time_ws  0.69558618 0.00193186707
+12                            Step_Width -0.67308427 0.00306340700
+13 Double_Support_Percent_Variability_ws  0.66839213 0.00335657863
+14             Swing_Time_Variability_ws  0.65562070 0.00427180289
+15                               Cadence -0.60404084 0.01023083787
+16             Double_Support_Percent_ws  0.57211552 0.01640548581
+17                            COM_RMS_ML -0.56079064 0.01918949361
+18                          COM_RMS_Vert -0.53163453 0.02806758382
+19                Step_Width_Variability  0.45701427 0.06514127636
+20            Step_Length_Variability_ws  0.45039202 0.06964074190
+21                                 HR_AP -0.44968394 0.07013501370
+22                 Step_Length_Asymmetry  0.44217862 0.07553352464
+23                               HR_Vert -0.38612895 0.12580052709
+24                  Swing_Time_Asymmetry  0.31784180 0.21378438192
+25                                 HR_ML -0.30568607 0.23279061508
+26                            COM_RMS_AP -0.29769263 0.24585540712
+27      Double_Support_Percent_Asymmetry -0.24436663 0.34453452366
+28                          Entropy_Vert -0.20306490 0.43440188231
+29                                 Speed -0.14791295 0.57102723953
+30                            Entropy_AP  0.09693176 0.71131447904
+31                        GDI_Percent_ws  0.04868577 0.85279333759
+
+# --------------------
