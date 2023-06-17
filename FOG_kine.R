@@ -6,7 +6,6 @@ library(spatstat)
 library(lubridate)
 library(DescTools)
 library(randomForest)
-library(DALEX)
 library(gbm)
 options(scipen = 999)
 library(ISLR2)
@@ -1173,18 +1172,30 @@ FOG_kine$condition <- as.factor(FOG_kine$condition)
 FOG_kine <- FOG_kine %>% mutate(FoG_Percent_StraightLine=ifelse(FoG_Percent_StraightLine<0,0,FoG_Percent_StraightLine))
 fwrite(FOG_kine, "FOG_kine_ws.txt", sep="\t")
 
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+
+sum(FOG_kine$FoG_Percent_StraightLine<0)
+
 data.frame(names(FOG_kine))
 
+deter_data_clinical <- fread("deter_data_clinical.csv")
+
+unique(deter_data_clinical$condition)
+
 pvalues <- data.frame()
+
 
 for(i in names(FOG_kine)[3:34]){
   print(i)
   cat(" - - - - - - - - - - - - - - - - - - - - - - - - -")
-  FOG_kine_temp <- FOG_kine %>% filter(condition == "MedOFFStimON" | condition == "ON130Hz") 
-  WCT <- wilcox.test(get(i)~condition, data = FOG_kine_temp)
+  FOG_kine_temp <- FOG_kine %>% filter(condition == "MedOFFStimOFF" | condition == "ON60Hz") 
+  WCT <- wilcox.test(get(i)~condition, data = FOG_kine_temp, paired=T)
   pvalues <- pvalues %>% bind_rows(data.frame(WCT$p.value)) 
   
 }
+
+
+
 
 means <- data.frame()
 means <- round(means, 3)
@@ -2019,3 +2030,115 @@ data.frame(names(temp)[2:32]) %>% bind_cols(data.frame(list)) %>% bind_cols(data
 31                        GDI_Percent_ws  0.04868577 0.85279333759
 
 # --------------------
+
+# random stuff
+
+deter_data_clinical <- fread("deter_data_clinical.csv")
+
+unique(deter_data_clinical$condition)
+
+wilcox.test(DetUPDRS_III ~condition, data = deter_data_clinical[condition=="Med_OFF_Stim_OFF"|,], paired=T)
+
+deter_data_clinical <- deter_data_clinical[condition=="Med_ON_Stim_130Hz"|condition=="Med_ON_Stim_60Hz",]
+
+deter_data_clinical %>%
+  select(DetAXIAL_score          , condition) %>%
+  filter(condition=="Med_ON_Stim_130Hz") %>% select(1) %>% rename("Med_ON_Stim_130Hz"="DetAXIAL_score") %>%
+  bind_cols(deter_data_clinical %>%
+  select(DetAXIAL_score          , condition) %>%
+  filter(condition=="Med_ON_Stim_60Hz") %>% select(1) %>% rename("Med_ON_Stim_60Hz"="DetAXIAL_score")) %>%
+  ggplot((aes(Med_ON_Stim_60Hz, Med_ON_Stim_130Hz))) +
+  geom_jitter(alpha=0.8, size=4 , colour="deepskyblue4") +
+  theme_minimal() +
+  ggsci::scale_color_nejm() +
+  ggsci::scale_fill_nejm()  +
+  xlab("\n Axial Score \n Med ON-Stim ON 60Hz") +
+  ylab("Axial Score \n Med ON-Stim ON 130Hz \n") +
+  xlim(0,20) +ylim(0,20) +
+  geom_abline(intercept =0 , slope = 1, size=1, colour="firebrick")
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+
+unique(FOG_kine$condition)
+
+FOG_kine <- FOG_kine[condition=="ON130Hz"|condition=="ON60Hz",]
+
+
+FOG_kine %>%
+  select(FoG_Percent_StraightLine , condition) %>%
+  filter(condition=="ON130Hz") %>% select(1) %>% rename("ON130Hz"="FoG_Percent_StraightLine") %>%
+  bind_cols(FOG_kine %>%
+  select(FoG_Percent_StraightLine , condition) %>%
+  filter(condition=="ON60Hz") %>% select(1) %>% rename("ON60Hz"="FoG_Percent_StraightLine")) %>%
+  ggplot((aes(ON60Hz, ON130Hz))) +
+  geom_jitter(alpha=0.8, size=4 , colour="deepskyblue4") +
+  theme_minimal() +
+  ggsci::scale_color_nejm() +
+  ggsci::scale_fill_nejm()  +
+  xlab("\n FOG % Time \n Med ON-Stim ON 60Hz") +
+  ylab("FOG % Time \n Med ON-Stim ON 130Hz \n") +
+  xlim(0,90) +ylim(0,90) +
+  geom_abline(intercept =0 , slope = 1, size=1, colour="firebrick")
+
+
+FOG_Stim_conditions <- fread("FOG_Stim_conditions.csv", sep=";")
+unique(FOG_Stim_conditions$condition)
+FOG_Stim_conditions <- FOG_Stim_conditions[condition=="Med_ON_preOP"|condition=="MED_ON_STIM_ON", c("UPDRS_III","condition")]
+FOG_Stim_conditions <- FOG_Stim_conditions %>% drop_na() %>% filter(UPDRS_III!=21)
+
+
+wilcox.test(UPDRS_III~condition, data = FOG_Stim_conditions[condition=="Med_OFF_preop"|condition=="MED_OFF_STIM_OFF",], paired=T, correct=T)
+wilcox.test(UPDRS_III~condition, data = FOG_Stim_conditions[condition=="Med_ON_preOP"|condition=="MED_ON_STIM_ON",], paired=T, correct=T)
+
+
+
+# Correlation between FOG % time straight-line vs SWS time or FOG # events ---------
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+FOG_kine <- FOG_kine %>% select(patient_name, condition, FoG_Percent_StraightLine)
+unique(FOG_kine$condition)
+FOG_kine <- FOG_kine %>% mutate(condition=ifelse(condition=="MedOFFStimOFF", "MED_OFF_STIM_OFF",
+                                                 ifelse(condition=="MedOFFStimON", "MED_OFF_STIM_ON",
+                                                        ifelse(condition=="MedONStimOFF", "MED_ON_STIM_OFF",
+                                                               ifelse(condition=="ON130Hz", "MED_ON_STIM_ON", "MED_ON_STIM_ON_60Hz")))))
+  
+  
+FOG_Stim_conditions <- fread("FOG_Stim_conditions.csv", sep=";")
+FOG_Stim_conditions <- FOG_Stim_conditions %>% select(patient, condition, SWS_time_s, SWS_N_FOG_Events)
+FOG_Stim_conditions$patient <- parse_number(FOG_Stim_conditions$patient)
+names(FOG_Stim_conditions)[1] <- "patient_name"
+unique(FOG_Stim_conditions$condition)
+
+
+FOG_Stim_conditions <- FOG_kine %>% inner_join(FOG_Stim_conditions)
+FOG_Stim_conditions <- FOG_Stim_conditions %>% drop_na()
+
+cor.test(FOG_Stim_conditions$FoG_Percent_StraightLine, FOG_Stim_conditions$SWS_time_s)
+
+
+# 	Pearson's product-moment correlation
+# 
+# data:  FOG_Stim_conditions$FoG_Percent_StraightLine and FOG_Stim_conditions$SWS_time_s
+# t = 13.122, df = 77, p-value < 0.00000000000000022
+# alternative hypothesis: true correlation is not equal to 0
+# 95 percent confidence interval:
+#  0.7475384 0.8889711
+# sample estimates:
+#       cor 
+# 0.8312523 
+
+
+
+cor.test(FOG_Stim_conditions$FoG_Percent_StraightLine, FOG_Stim_conditions$SWS_N_FOG_Events)
+
+# 	Pearson's product-moment correlation
+# 
+# data:  FOG_Stim_conditions$FoG_Percent_StraightLine and FOG_Stim_conditions$SWS_N_FOG_Events
+# t = 11.036, df = 77, p-value < 0.00000000000000022
+# alternative hypothesis: true correlation is not equal to 0
+# 95 percent confidence interval:
+#  0.6791546 0.8557344
+# sample estimates:
+#       cor 
+# 0.7827247 
+# --------------------------
