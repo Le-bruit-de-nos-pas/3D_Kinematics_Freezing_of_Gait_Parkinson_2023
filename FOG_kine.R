@@ -2090,8 +2090,6 @@ FOG_Stim_conditions <- FOG_Stim_conditions %>% drop_na() %>% filter(UPDRS_III!=2
 wilcox.test(UPDRS_III~condition, data = FOG_Stim_conditions[condition=="Med_OFF_preop"|condition=="MED_OFF_STIM_OFF",], paired=T, correct=T)
 wilcox.test(UPDRS_III~condition, data = FOG_Stim_conditions[condition=="Med_ON_preOP"|condition=="MED_ON_STIM_ON",], paired=T, correct=T)
 
-
-
 # Correlation between FOG % time straight-line vs SWS time or FOG # events ---------
 
 FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
@@ -2142,3 +2140,66 @@ cor.test(FOG_Stim_conditions$FoG_Percent_StraightLine, FOG_Stim_conditions$SWS_N
 #       cor 
 # 0.7827247 
 # --------------------------
+# Plots 60Hz vs 130Hz ------------------------------
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+FOG_kine <- FOG_kine %>% select(patient_name, FoG_Percent_StraightLine, condition)
+unique(FOG_kine$condition)
+FOG_kine <- FOG_kine %>% filter(condition=="ON130Hz"|condition=="ON60Hz")
+
+#FOG_kine <- FOG_kine %>% spread(key=condition, value=FoG_Percent_StraightLine)
+FOG_kine <- FOG_kine %>% arrange(condition) %>% select(patient_name)
+
+
+
+FOG_kine %>% ggplot(aes(ON60Hz, ON130Hz)) +
+  geom_point(colour="firebrick", size=3, alpha=0.9) +
+  theme_minimal() +
+  xlab("\n FOG % time straight-line basis \n (ON-ON 60 Hz)") + ylab("FOG % time straight-line basis \n ON-ON 130 Hz") +
+  xlim(0,100) + ylim(0,100) +
+  geom_abline(intercept = 0)
+
+
+deter_data_clinical <- fread("deter_data_clinical.csv", sep=";")
+
+DetSWS_N_FOG_Events  <- deter_data_clinical %>% 
+  filter(condition=="Med_ON_Stim_130Hz"|condition=="Med_ON_Stim_60Hz") %>% 
+  select(condition, DetSWS_N_FOG_Events )
+
+FOG_kine %>% bind_cols(DetSWS_N_FOG_Events) %>% spread(key=condition, value=DetSWS_N_FOG_Events) %>%
+  select(-patient_name) %>%
+  ggplot(aes(Med_ON_Stim_60Hz, Med_ON_Stim_130Hz )) +
+    geom_point(colour="firebrick", size=3, alpha=0.9) +
+  theme_minimal() +
+  xlab("\n # FOG episodes \n (ON-ON 60 Hz)") + ylab(" # FOG episodes \n ON-ON 130 Hz") +
+  xlim(0,32) + ylim(0,32) +
+  geom_abline(intercept = 0)
+
+DetSWS_time_s  <- deter_data_clinical %>% 
+  filter(condition=="Med_ON_Stim_130Hz"|condition=="Med_ON_Stim_60Hz") %>% 
+  select(condition, DetSWS_time_s )
+
+FOG_kine %>% bind_cols(DetSWS_time_s) %>% spread(key=condition, value=DetSWS_time_s) %>%
+  select(-patient_name) %>%
+  ggplot(aes(Med_ON_Stim_60Hz, Med_ON_Stim_130Hz )) +
+    geom_point(colour="firebrick", size=3, alpha=0.9) +
+  theme_minimal() +
+  xlab("\n SWS time (s) \n (ON-ON 60 Hz)") + ylab(" SWS time (s) \n ON-ON 130 Hz") +
+  xlim(0,300) + ylim(0,300) +
+  geom_abline(intercept = 0)
+
+
+DetAXIAL_score  <- deter_data_clinical %>% 
+  filter(condition=="Med_ON_Stim_130Hz"|condition=="Med_ON_Stim_60Hz") %>% 
+  select(condition, DetAXIAL_score )
+
+FOG_kine %>% bind_cols(DetAXIAL_score) %>% spread(key=condition, value=DetAXIAL_score) %>%
+  select(-patient_name) %>%
+  ggplot(aes(Med_ON_Stim_60Hz, Med_ON_Stim_130Hz )) +
+    geom_point(colour="firebrick", size=3, alpha=0.9) +
+  theme_minimal() +
+  xlab("\n Axial Score \n (ON-ON 60 Hz)") + ylab(" Axial Score \n ON-ON 130 Hz") +
+  xlim(0,20) + ylim(0,20) +
+  geom_abline(intercept = 0)
+
+# ------------------
