@@ -2203,3 +2203,141 @@ FOG_kine %>% bind_cols(DetAXIAL_score) %>% spread(key=condition, value=DetAXIAL_
   geom_abline(intercept = 0)
 
 # ------------------
+# Individual patients ---------------
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+FOG_kine <- FOG_kine %>% select(patient_name, FoG_Percent_StraightLine, condition)
+unique(FOG_kine$condition)
+
+FOG_kine <- FOG_kine %>% arrange(condition) %>% select(patient_name)
+
+
+deter_data_clinical <- fread("deter_data_clinical.csv", sep=";")
+names(deter_data_clinical)
+deter_data_clinical <- deter_data_clinical %>% select(condition, DetSWS_N_FOG_Events)
+deter_data_clinical <- FOG_kine %>% bind_cols(deter_data_clinical) %>% spread(key=condition, value=DetSWS_N_FOG_Events)                             
+
+
+deter_data_clinical <- deter_data_clinical %>% 
+  mutate(Change_Med= 100*(Med_ON_Stim_OFF-Med_OFF_Stim_OFF)/Med_OFF_Stim_OFF) %>%
+  mutate(Change_Med=ifelse(Change_Med> (-0.1), "Non_Med_Resp", "Med_Resp")) %>%
+  mutate(Change_DBS= 100*(Med_OFF_Stim_ON -Med_OFF_Stim_OFF)/Med_OFF_Stim_OFF) %>%
+  mutate(Change_DBS=ifelse(Change_DBS> (-0.1), "Non_DBS_Resp", "DBS_Resp")) 
+
+  
+temp <-  deter_data_clinical %>%
+  filter(Change_Med=="Non_Med_Resp") %>%
+  select(patient_name, Med_OFF_Stim_OFF, Med_ON_Stim_OFF, Med_OFF_Stim_ON, Med_ON_Stim_130Hz, Med_ON_Stim_60Hz) %>%
+  gather(Condition, DetSWS_N_FOG_Events, Med_OFF_Stim_OFF:Med_ON_Stim_60Hz)
+
+wilcox.test(DetSWS_N_FOG_Events ~ Condition , data=temp[temp$Condition =="Med_OFF_Stim_OFF"|temp$Condition =="Med_ON_Stim_OFF",], paired=T)
+
+
+deter_data_clinical %>%
+  filter(Change_Med=="Non_Med_Resp") %>%
+  select(patient_name, Med_OFF_Stim_OFF, Med_ON_Stim_OFF, Med_OFF_Stim_ON, Med_ON_Stim_130Hz, Med_ON_Stim_60Hz) %>%
+  gather(Condition, DetSWS_N_FOG_Events, Med_OFF_Stim_OFF:Med_ON_Stim_60Hz) %>%
+  mutate(Condition=ifelse(Condition=="Med_OFF_Stim_OFF", 1, 
+                          ifelse(Condition=="Med_ON_Stim_OFF", 2, 
+                                 ifelse(Condition=="Med_OFF_Stim_ON", 3, 
+                                        ifelse(Condition=="Med_ON_Stim_130Hz", 4, 5))))) %>%
+  ggplot(aes(as.factor(Condition), DetSWS_N_FOG_Events, group = patient_name, colour=as.factor(patient_name), fill=as.factor(patient_name))) +
+  geom_point(show.legend = F, size=4) +
+  geom_line(show.legend=F, size=1) +
+  theme_minimal() +
+  scale_colour_viridis_d() +
+  xlab("") + ylab("No. FOG Events \n") +
+  scale_x_discrete(labels=c("1" = "Med_OFF_Stim_OFF", "2" = "Med_ON_Stim_OFF", "3" = "Med_OFF_Stim_ON", "4" = "Med_ON_Stim_130Hz", "5" = "Med_ON_Stim_60Hz")) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+
+
+
+temp <-  deter_data_clinical %>%
+  filter(Change_DBS=="Non_DBS_Resp") %>%
+  select(patient_name, Med_OFF_Stim_OFF, Med_OFF_Stim_ON, Med_ON_Stim_OFF, Med_ON_Stim_130Hz, Med_ON_Stim_60Hz) %>%
+  gather(Condition, DetSWS_N_FOG_Events, Med_OFF_Stim_OFF:Med_ON_Stim_60Hz)
+
+wilcox.test(DetSWS_N_FOG_Events ~ Condition , data=temp[temp$Condition =="Med_OFF_Stim_OFF"|temp$Condition =="Med_ON_Stim_OFF",], paired=T)
+
+deter_data_clinical %>%
+  filter(Change_DBS=="Non_DBS_Resp") %>%
+  select(patient_name, Med_OFF_Stim_OFF, Med_OFF_Stim_ON, Med_ON_Stim_OFF, Med_ON_Stim_130Hz, Med_ON_Stim_60Hz) %>%
+  gather(Condition, DetSWS_N_FOG_Events, Med_OFF_Stim_OFF:Med_ON_Stim_60Hz) %>%
+  mutate(Condition=ifelse(Condition=="Med_OFF_Stim_OFF", 1, 
+                          ifelse(Condition=="Med_OFF_Stim_ON", 2, 
+                                 ifelse(Condition=="Med_ON_Stim_OFF", 3,
+                                        ifelse(Condition=="Med_ON_Stim_130Hz", 4, 5))))) %>%
+  ggplot(aes(as.factor(Condition), DetSWS_N_FOG_Events, group = patient_name, colour=as.factor(patient_name), fill=as.factor(patient_name))) +
+  geom_point(show.legend = F, size=4) +
+  geom_line(show.legend=F, size=1) +
+  theme_minimal() +
+  scale_colour_viridis_d() +
+  xlab("") + ylab("No. FOG Events \n") +
+  scale_x_discrete(labels=c("1" = "Med_OFF_Stim_OFF", "2" = "Med_OFF_Stim_ON", "3" = "Med_ON_Stim_OFF", "4" = "Med_ON_Stim_130Hz", "5" = "Med_ON_Stim_60Hz")) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+
+
+deter_data_clinical <- fread("deter_data_clinical.csv", sep=";")
+names(deter_data_clinical)
+deter_data_clinical <- deter_data_clinical %>% select(condition, DetSWS_N_FOG_Events)
+deter_data_clinical <- FOG_kine %>% bind_cols(deter_data_clinical) %>% spread(key=condition, value=DetSWS_N_FOG_Events)                             
+
+deter_data_clinical <- deter_data_clinical %>% 
+  mutate(Change_Med= 100*(Med_ON_Stim_OFF-Med_OFF_Stim_OFF)/Med_OFF_Stim_OFF) %>%
+  mutate(Change_DBS= 100*(Med_OFF_Stim_ON -Med_OFF_Stim_OFF)/Med_OFF_Stim_OFF) 
+
+deter_data_clinical %>%
+  ggplot(aes(Change_Med+0.000000001, Change_DBS+0.000000001)) +
+  geom_jitter(size=2, alpha=0.8) +
+  xlim(-110,610) + ylim(-110,610) +
+  xlab(" \n % Difference in No. FOG Events \n Baseline OFF to MedON-StimOFF") +
+    ylab(" % Difference in No. FOG Events \n Baseline OFF to MedOFF-StimON \n") +
+  theme_minimal()
+
+
+deter_data_clinical <- fread("deter_data_clinical.csv", sep=";")
+names(deter_data_clinical)
+deter_data_clinical <- deter_data_clinical %>% select(condition, DetSWS_N_FOG_Events)
+deter_data_clinical <- FOG_kine %>% bind_cols(deter_data_clinical) %>% spread(key=condition, value=DetSWS_N_FOG_Events)                             
+
+deter_data_clinical <- deter_data_clinical %>% 
+  mutate(Change_Med= (Med_ON_Stim_OFF-Med_OFF_Stim_OFF)) %>%
+  mutate(Change_DBS= (Med_OFF_Stim_ON -Med_OFF_Stim_OFF)) 
+
+deter_data_clinical %>%
+  ggplot(aes(Change_Med+0.000000001, Change_DBS+0.000000001)) +
+  geom_jitter(size=2, alpha=0.8) +
+  xlim(-45,25) + ylim(-45,25) +
+  xlab(" \n Difference in No. FOG Events \n Baseline OFF to MedON-StimOFF") +
+    ylab(" Difference in No. FOG Events \n Baseline OFF to MedOFF-StimON \n") +
+  theme_minimal()
+
+
+
+
+
+
+FOG_kine <- fread("FOG_kine_ws.txt", sep="\t")
+FOG_kine <- FOG_kine %>% select(patient_name, FoG_Percent_StraightLine, condition)
+unique(FOG_kine$condition)
+
+FOG_kine <- FOG_kine %>% arrange(condition)
+FOG_kine <- FOG_kine %>% spread(key=condition, value=FoG_Percent_StraightLine)                             
+
+FOG_kine <- FOG_kine %>% 
+  mutate(Change_Med= (MedONStimOFF-MedOFFStimOFF)) %>%
+  mutate(Change_DBS= (MedOFFStimON-MedOFFStimOFF)) 
+
+FOG_kine %>%
+  ggplot(aes(Change_Med+0.000000001, Change_DBS+0.000000001)) +
+  geom_jitter(size=2, alpha=0.8) +
+  xlim(-100,75) + ylim(-85,5) +
+  xlab(" \n Difference in % Gait ON FOG \n Baseline OFF to MedON-StimOFF") +
+    ylab(" Difference in % Gait ON FOG \n Baseline OFF to MedOFF-StimON \n") +
+  theme_minimal()
+
+
+
+
+# -----------------------
